@@ -1,57 +1,180 @@
 using UnityEngine;
+using System.Collections;
 
 public class PlayerController : MonoBehaviour
 {
     [SerializeField]
-    CharacterController characterController;
-    [SerializeField]
-    private float speed;
-    [SerializeField]
-    private LayerMask EnLyr;
+    private CharacterController characterController;
 
+    [SerializeField]
+    private float speed = 5f;
+
+    [Header("Melee")]
     [SerializeField]
     private GameObject fist;
+
+    [SerializeField]
+    private float fistDuration = 0.2f;
+
+    [SerializeField]
+    private float punchRange = 2f;
+
+    [SerializeField]
+    private int punchDamage = 1;
+
+    [SerializeField]
+    private LayerMask enemyLayer;
+
+    private bool attacking = false;
+
+    private Vector3 aimDirection = Vector3.forward;
+
+
     void Update()
     {
-        Vector3 movementVector = Vector2.zero;
-
-        movementVector.x = Input.GetAxis("Horizontal");
-        movementVector.z = Input.GetAxis("Vertical");
-        movementVector.y = 0;
-        characterController.Move(movementVector * Time.deltaTime * speed);
-
+        // =========================================
+        // MOUSE = AIM / FACING
+        // =========================================
 
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+
+        Plane ground = new Plane(
+            Vector3.up,
+            transform.position
+        );
+
+        if (ground.Raycast(ray, out float distance))
+        {
+            Vector3 mousePosition = ray.GetPoint(distance);
+
+            Vector3 direction =
+                mousePosition - transform.position;
+
+            direction.y = 0f;
+
+            if (direction.sqrMagnitude > 0.001f)
+            {
+                aimDirection = direction.normalized;
+
+                transform.rotation =
+                    Quaternion.LookRotation(aimDirection);
+            }
+        }
+
+
+        // =========================================
+        // WASD = PLAIN MOVEMENT
+        // =========================================
+
+        float horizontal =
+            Input.GetAxisRaw("Horizontal");
+
+        float vertical =
+            Input.GetAxisRaw("Vertical");
+
+
+        Vector3 movement = new Vector3(
+            horizontal,
+            0f,
+            vertical
+        );
+
+
+        // Prevent faster diagonal movement
+        if (movement.magnitude > 1f)
+        {
+            movement.Normalize();
+        }
+
+
+        characterController.Move(
+            movement *
+            speed *
+            Time.deltaTime
+        );
+
+
+        // =========================================
+        // ATTACK
+        // =========================================
+
+        if (Input.GetMouseButtonDown(0) && !attacking)
+        {
+            StartCoroutine(MeleeAttack());
+        }
+    }
+
+
+    IEnumerator MeleeAttack()
+    {
+        attacking = true;
+
+
+        if (fist != null)
+        {
+            fist.SetActive(true);
+        }
+
+
+        // =========================================
+        // PUNCH TOWARD MOUSE
+        // =========================================
+
+        Vector3 rayOrigin =
+            transform.position +
+            Vector3.up * 0.5f;
+
+
         RaycastHit hitInfo;
 
-        if (Physics.Raycast(ray, out hitInfo, 100f))
+
+        if (Physics.Raycast(
+            rayOrigin,
+            aimDirection,
+            out hitInfo,
+            punchRange,
+            enemyLayer))
         {
-            Vector3 position = hitInfo.point;
-            position.y = transform.position.y;
-            transform.LookAt(position);
+            Debug.Log(
+                "Punched: " +
+                hitInfo.collider.name
+            );
+
+            Enemy enemy =
+                hitInfo.collider.GetComponent<Enemy>();
+
+            if (enemy != null)
+            {
+                enemy.TakeDamage(punchDamage);
+            }
         }
 
 
-        //disparo
-        if (Input.GetMouseButtonDown(0))
+        yield return new WaitForSeconds(
+            fistDuration
+        );
+
+
+        if (fist != null)
         {
-           
             fist.SetActive(false);
-            Ray fireRay = new Ray(transform.position + Vector3.up, transform.forward);
-            RaycastHit enemyInfo;
-
-
-            Debug.DrawRay(fireRay.origin, fireRay.direction * 10, Color.green, 10f);
-
-            if (Physics.Raycast(fireRay.origin, fireRay.direction * 10, out enemyInfo, 100f, EnLyr))
-
-            {
-                Debug.Log(enemyInfo.transform.gameObject.name);
-            }
-            else
-            {
-                Debug.Log("Nothing hit");
-            }
         }
+
+        attacking = false;
+    }
+
+
+    private void OnDrawGizmosSelected()
+    {
+        Gizmos.color = Color.red;
+
+        Vector3 origin =
+            transform.position +
+            Vector3.up * 0.5f;
+
+        Gizmos.DrawRay(
+            origin,
+            aimDirection * punchRange
+        );
     }
 }
